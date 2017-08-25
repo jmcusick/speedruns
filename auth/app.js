@@ -51,8 +51,6 @@ fs.readFile(credsFile, 'utf8', (err, data) => {
 });
 
 
-
-
 app.use(logger('dev'));
 // parse application/x-www-form-urlencoded
 app.use(bodyParser.urlencoded({ extended: false }))
@@ -70,6 +68,7 @@ app.listen(3000, function () {
 
 // POST method route
 app.post('/register', function (req, res) {
+  console.log("register");
   console.log("username: "+req.body.username);
   console.log("password: "+req.body.password);
 
@@ -81,15 +80,23 @@ app.post('/register', function (req, res) {
     console.log("userdata: ",userdata);
     var query = connection.query('INSERT INTO creds SET ?', userdata, function(err, result) {
       if (err){
-        console.log("error:", err);
-        throw err; //TODO: comment this out to prevent crashes.. (e.g., duplicate user error should not crash)
+        console.log("register error:", err);
+        console.log("error code: ", err["code"]);
+        if(err["code"] === "ER_DUP_ENTRY"){
+          res.send(500, "Registration failed: Username already exists.");
+        } else{
+        res.send(500, "Registration failed: Unkown error.");
+        }
+        //throw err; //comment this out to prevent crashes.. (e.g., duplicate user error should not crash)
+      } else{ 
+        console.log("finished query.");
+        res.send(200);
       }
-      console.log("finsihed query.");
     });
 
   });
 
-  res.send('POST request to the homepage')
+  //res.send(500); // don't put this here, async will return immediately
 })
 
 
@@ -100,24 +107,34 @@ app.post('/login', function (req, res) {
   console.log("password: "+req.body.password);
 
   connection.query('SELECT password FROM creds where username = ?', req.body.username, function (err, results, fields) {
-    if (err) throw err;
-    console.log('results size: ', results.length);
-    var hash = results[0]["password"].toString();
-    console.log("hash: ",hash);
-    bcrypt.compare(req.body.password, hash, function(err, res) {
-      // res == true 
-      if (res == true){ // sucess
-        console.log("Login successful!")
-      } else{ // fail
-        console.log("Username or password does not match.")
+    if (err){
+      console.log("Log in error: ",err);
+      res.send(401); // unauthorized
+    }
+    else{
+      console.log('results size: ', results.length);
+      if(results.length === 0){ // username not found
+        res.send(401); // unauthorized
+        return;
       }
-    });
-
+      var hash = results[0]["password"].toString();
+      console.log("hash: ",hash);
+      bcrypt.compare(req.body.password, hash, function(authErr, auth) {
+        // auth == true
+        if (authErr){
+          console.log("Auth error: ",authErr);
+          res.send(401);
+        }
+        if (auth == true){ // sucess
+          console.log("Login successful!");
+          res.send(200); // success
+        } else{ // fail
+          console.log("Username or password does not match.");
+          res.send(401); // unauthorized
+        }
+      });
+    }
   });
-
-
-
-  res.send('POST request to the homepage')
 })
 
 // https.createServer(options, (req, res) => {
